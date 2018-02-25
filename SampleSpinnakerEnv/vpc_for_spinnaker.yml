@@ -1,0 +1,400 @@
+Description: 
+  This template creates the resources requried for a sample VPC, Subnets, InternetGateway 
+  and another network resources for Spinnaker.
+
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  ClusterStack:
+    Description: This value will be used for Resources Name.
+    MinLength: '1'
+    MaxLength: '10'
+    Type: String
+
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+  SSHLocation:
+    Description:
+      The IP address range that can be used to connect using SSH to the
+      Amazon EC2 instances.
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x.
+
+Mappings:
+  RegionOSAMI:
+    ap-northeast-2:
+      Linux: ami-863090e8 ## Amazon Linux1
+      Ubuntu: ami-e49e398a ## Ubuntu 14.04
+
+Resources:
+  WaitHandle:
+    Type: 'AWS::CloudFormation::WaitConditionHandle'
+
+  ######### Network(VPC, Subnets, etc)  ##########
+  # This VPC has only 2 public subnets.
+  ################################################
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.200.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+  AttachGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.200.100.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: !Sub "${ClusterStack}-Pub1"
+        - Key: 'immutable_metadata'
+          value: '{"purpose":"awskrug-test"}'
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.200.101.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Select 
+        - 1
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: !Sub "${ClusterStack}-Pub2"
+        - Key: 'immutable_metadata'
+          value: '{"purpose":"awskrug-test"}'
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetRouteTableAssociation1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  PublicSubnetRouteTableAssociation2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+################# IAM User ################################
+  SpinnakerS3User:
+    Type: "AWS::IAM::User"
+    Properties: 
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Path: "/"
+      UserName: Spinn-user
+
+################# IAM Roles & Policies ####################
+  #### Role for Created Instances by Spinnaker ####
+  BaseIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      RoleName: BaseIAMRole2
+
+  BaseIAMRoleRoleInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: BaseIAMRole2
+      Roles:
+        - !Ref BaseIAMRole
+
+  #### Role for Spinnaker Instance ####
+  SpinnakerAuthRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'  
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Path: /
+      RoleName: SpinnakerAuthRole2
+
+  SpinnakerAuthRolePolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties: 
+      PolicyName: SpinnakerAssumeRolePolicy2
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'sts:AssumeRole'
+            Resource: 
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/spinnakerManaged2'
+      Roles:
+        - !Ref SpinnakerAuthRole
+
+  SpinnakerAuthRoleInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: SpinnakerAuthRole2
+      Roles:
+        - !Ref SpinnakerAuthRole
+
+  #### Role for Managed Account ####
+  SpinnakerManagedRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SpinnakerAuthRole2'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:user/Spinn-user'
+            Action:
+              - 'sts:AssumeRole'  
+      ManagedPolicyArns: 
+        - 'arn:aws:iam::aws:policy/AmazonEC2FullAccess'
+      RoleName: SpinnakerManagedRole2
+
+  SpinnakerManagedRolePolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties: 
+      PolicyName: SpinnakerManagedRolePolicy
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'iam:PassRole'
+            Resource: 
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/BaseIAMRole'
+      Roles:
+        - !Ref SpinnakerManagedRole
+
+  SpinnakerManagedRoleInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: SpinnakerManagedRole
+      Roles:
+        - !Ref SpinnakerManagedRole
+
+
+  ############ Create Security Groups ############
+  BastionSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: AttachGateway
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Enable SSH access via prot 22
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: !Ref SSHLocation
+  JenkinsSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: 
+      - BastionSG
+      - SpinnakerSG
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Enable SSH access via port 22
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          SourceSecurityGroupId: !Ref BastionSG
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          SourceSecurityGroupId: !Ref SpinnakerSG
+
+  SpinnakerSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: 
+      - BastionSG
+      - SpinnakerAuthRoleInstanceProfile
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Enable SSH access via port 22
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          SourceSecurityGroupId: !Ref BastionSG
+        - IpProtocol: tcp
+          FromPort: '8084'
+          ToPort: '8084'
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: '9000'
+          ToPort: '9000'
+          CidrIp: !Ref SSHLocation
+
+  ServerGroupElbSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: 
+      - VPC
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Enable SSH access via port 22
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          SourceSecurityGroupId: !Ref BastionSG
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: !Ref SSHLocation
+
+  ServerGroupSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: 
+      - ServerGroupElbSG
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Enable SSH access via port 22
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          SourceSecurityGroupId: !Ref BastionSG
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          SourceSecurityGroupId: !Ref SpinnakerSG
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          SourceSecurityGroupId: !Ref ServerGroupElbSG
+
+  ############ EC2 Instances ###########
+  ### Bastion ###
+  BastionInstance:
+    Type: 'AWS::EC2::Instance'
+    DependsOn: BastionSG
+    Properties:
+      ImageId: !FindInMap 
+        - RegionOSAMI
+        - !Ref 'AWS::Region'
+        - Linux
+      InstanceType: t2.nano
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: BastionHost
+      NetworkInterfaces:
+        - GroupSet:
+          - !Ref BastionSG
+          AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'
+          DeleteOnTermination: 'true'
+          SubnetId: !Ref PublicSubnet1
+
+  ### Jenkins ###
+  JenkinsInstance:
+    Type: 'AWS::EC2::Instance'
+    DependsOn: JenkinsSG
+    Properties:
+      ImageId: !FindInMap 
+        - RegionOSAMI
+        - !Ref 'AWS::Region'
+        - Linux
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: Jenkins
+      NetworkInterfaces:
+        - GroupSet:
+          - !Ref JenkinsSG
+          AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'
+          DeleteOnTermination: 'true'
+          SubnetId: !Ref PublicSubnet1
+
+  ### Spinnaker ###
+  SpinnakerInstance:
+    Type: 'AWS::EC2::Instance'
+    DependsOn: SpinnakerSG
+    Properties:
+      ImageId: !FindInMap 
+        - RegionOSAMI
+        - !Ref 'AWS::Region'
+        - Ubuntu
+      InstanceType: t2.large
+      IamInstanceProfile: !Ref SpinnakerManagedRoleInstanceProfile
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: Spinnaker-AWSKRUG
+      NetworkInterfaces:
+        - GroupSet:
+          - !Ref SpinnakerSG
+          AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'
+          DeleteOnTermination: 'true'
+          SubnetId: !Ref PublicSubnet1
+
+################# Outputs ################
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+  # ServiceRoleName:
+  #   Value: !Ref CodeDeployTrustRole
+  # ServiceRoleARN:
+  #   Value: !GetAtt 
+  #     - CodeDeployTrustRole
+  #     - Arn
+  # AutoScalingGroupName:
+  #   Value: !Ref BlueGreenAutoScalingGroup
+  # LoadBalancerName:
+  #   Value: !Ref ClassicLoadBalancer
