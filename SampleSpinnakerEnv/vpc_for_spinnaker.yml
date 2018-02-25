@@ -73,7 +73,7 @@ Resources:
         - Key: Name
           Value: !Sub "${ClusterStack}-Pub1"
         - Key: 'immutable_metadata'
-          value: '{"purpose":"awskrug-test"}'
+          Value: '{"purpose":"awskrug-test"}'
   PublicSubnet2:
     Type: 'AWS::EC2::Subnet'
     Properties:
@@ -87,7 +87,7 @@ Resources:
         - Key: Name
           Value: !Sub "${ClusterStack}-Pub2"
         - Key: 'immutable_metadata'
-          value: '{"purpose":"awskrug-test"}'
+          Value: '{"purpose":"awskrug-test"}'
   PublicRouteTable:
     Type: 'AWS::EC2::RouteTable'
     Properties:
@@ -136,12 +136,12 @@ Resources:
             Action:
               - 'sts:AssumeRole'
       Path: /
-      RoleName: BaseIAMRole2
+      RoleName: BaseIAMRole
 
   BaseIAMRoleRoleInstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
-      InstanceProfileName: BaseIAMRole2
+      InstanceProfileName: BaseIAMRole
       Roles:
         - !Ref BaseIAMRole
 
@@ -160,45 +160,46 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/PowerUserAccess
       Path: /
-      RoleName: SpinnakerAuthRole2
+      RoleName: SpinnakerAuthRole
 
   SpinnakerAuthRolePolicy:
     Type: 'AWS::IAM::Policy'
     Properties: 
-      PolicyName: SpinnakerAssumeRolePolicy2
+      PolicyName: SpinnakerAssumeRolePolicy
       PolicyDocument:
         Statement:
           - Effect: Allow
             Action:
               - 'sts:AssumeRole'
             Resource: 
-              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/spinnakerManaged2'
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/spinnakerManaged'
       Roles:
         - !Ref SpinnakerAuthRole
 
   SpinnakerAuthRoleInstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
-      InstanceProfileName: SpinnakerAuthRole2
+      InstanceProfileName: SpinnakerAuthRole
       Roles:
         - !Ref SpinnakerAuthRole
 
   #### Role for Managed Account ####
   SpinnakerManagedRole:
     Type: 'AWS::IAM::Role'
+    DependsOn: SpinnakerS3User
     Properties:
       AssumeRolePolicyDocument:
         Statement:
           - Effect: Allow
             Principal:
               AWS:
-                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SpinnakerAuthRole2'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SpinnakerAuthRole'
                 - !Sub 'arn:aws:iam::${AWS::AccountId}:user/Spinn-user'
             Action:
               - 'sts:AssumeRole'  
       ManagedPolicyArns: 
         - 'arn:aws:iam::aws:policy/AmazonEC2FullAccess'
-      RoleName: SpinnakerManagedRole2
+      RoleName: SpinnakerManagedRole
 
   SpinnakerManagedRolePolicy:
     Type: 'AWS::IAM::Policy'
