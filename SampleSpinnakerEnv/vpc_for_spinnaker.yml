@@ -316,6 +316,18 @@ Resources:
           FromPort: '80'
           ToPort: '80'
           SourceSecurityGroupId: !Ref ServerGroupElbSG
+  BakeEc2SG:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn:
+      - VPC
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: This security group will be used for an EC2 on Spinnaker Bake Step
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+	  FromPort: '22'
+	  ToPort: '22'
+	  CidrIp: 0.0.0.0/22
 
   ############ EC2 Instances ###########
   ### Bastion ###
@@ -389,6 +401,20 @@ Resources:
 Outputs:
   VpcId:
     Value: !Ref VPC
+  BastionPublicIP:
+    Value: !GetAtt BastionInstance.PublicIp
+  JenkinsPublicIP:
+    Value: !GetAtt JenkinsInstance.PublicIp
+  JenkinsPrivateIP:
+    Value: !GetAtt JenkinsInstance.PrivateIp
+  SpinnakerPublicIP:
+    Value: !GetAtt SpinnakerInstance.PublicIp
+  SpinnakerPrivateIP:
+    Value: !GetAtt SpinnakerInstance.PrivateIp
+  BakeEc2SG:
+    Value: !Ref BakeEc2SG
+
+
   # ServiceRoleName:
   #   Value: !Ref CodeDeployTrustRole
   # ServiceRoleARN:
