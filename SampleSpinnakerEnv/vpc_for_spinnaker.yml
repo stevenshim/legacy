@@ -325,9 +325,9 @@ Resources:
       GroupDescription: This security group will be used for an EC2 on Spinnaker Bake Step
       SecurityGroupIngress:
         - IpProtocol: tcp
-	  FromPort: '22'
-	  ToPort: '22'
-	  CidrIp: 0.0.0.0/22
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/32
 
   ############ EC2 Instances ###########
   ### Bastion ###
