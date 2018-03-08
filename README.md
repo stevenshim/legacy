@@ -1,1 +1,5 @@
-# MyCloudFormation
+# 소개
+
+Spinnaker를 AWS에 설치해보기 위한 샘플 CloudFormation입니다.
+발표 이후에 업무 때문에 바로 정리하지 못 했습니다.
+3월 중에 계속 업데이트 해보도록 하겠습니다.
